@@ -260,9 +260,11 @@ def script_load(settings):
     global slideText
     global last_slideText
     
+    #Make textsources blank on startup
     slideText       = ""
     last_slideText  = ""
     set_sources()
+    
     if autoconnect:
         thread_running = True
         t = threading.Thread(target=connect)
