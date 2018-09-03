@@ -15,8 +15,8 @@ password        = "password"
 connected       = False
 autoconnect     = True
 thread_running  = False #if a thread for recieving data is running
-disconnect      = False
-disconnected    = False #If the thread should disconnect
+disconnect      = False #If the thread should disconnect
+disconnected    = False 
 
 displayLayouts      = ET
 StageDisplayData    = ET
@@ -40,11 +40,11 @@ def connect_button_clicked(props, p):
     global thread_running
 
     if not autoconnect and not thread_running:
-        thread_running = True
         t = threading.Thread(target=connect)
         t.daemon = True
         t.start()
         q.put(0)
+        thread_running = True
     elif connected:
         print("Already connected")
     elif thread_running:
@@ -59,7 +59,10 @@ def connect(): #run only in thread t
     global password
     global s
 
-    while autoconnect and thread_running and not disconnect:
+    tries = 0
+
+    while (autoconnect or tries < 1) and not disconnect:
+        tries += 1
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((host, port))
@@ -85,13 +88,13 @@ def connect(): #run only in thread t
         except Exception as E:
             print("Couldn't connect to server: " + str(E))
             s.close()
-            time.sleep(5)
+            time.sleep(1)
         
         with thread_lock:
             connected = False
         
-
-    thread_running = False
+    with thread_lock:
+        thread_running = False
 
 def recv_and_process_data(): #run only in thread t
     global connected
@@ -115,16 +118,15 @@ def recv_and_process_data(): #run only in thread t
                         tmp_slideText = slide.text.strip()
                         if tmp_slideText != slideText:
                             with thread_lock:
-                                #print("changeing slideText before - tmp: " + tmp_slideText + " st: " + slideText + "lst: " + last_slideText)
                                 last_slideText = slideText
                                 slideText = tmp_slideText
-                                #print("changeing slideText after - tmp: " + tmp_slideText + " st: " + slideText + "lst: " + last_slideText)
                                 set_sources()
-                                #obs.timer_add(transition, 25)
                             
     except Exception as E:
         if connected:
             print("Disconnected because of error while recieving and reading data from server: " + str(E))
+            with thread_lock:
+                connected = False
         else:
             print("connection was shut down")
 
@@ -163,7 +165,6 @@ def set_sources(): #run only at loading and in thread t
         obs.obs_data_set_int(settings2, "opacity", 100)
         obs.obs_data_set_int(settings1, "outline_opacity", 0)
         obs.obs_data_set_int(settings2, "outline_opacity", 100)
-        
 
     obs.obs_source_update(source1, settings1)
     obs.obs_source_update(source2, settings2)
@@ -193,8 +194,6 @@ def transition():
             transparency2 = 100 - lerp
             if transparency2 <= 0:
                 transparency2 = 0
-                #obs.timer_remove(transition)
-
 
             source1 = obs.obs_get_source_by_name(source_1_name)
             source2 = obs.obs_get_source_by_name(source_2_name)
@@ -264,11 +263,12 @@ def script_load(settings):
     set_sources()
 
     if autoconnect:
-        thread_running = True
         t = threading.Thread(target=connect)
         t.daemon = True
         t.start()
         q.put(0)
+        thread_running = True
+
     obs.timer_add(transition, 25)
 
 # called when unloaded
@@ -276,14 +276,14 @@ def script_unload():
     global connected
     global thread_running
     global disconnect
-    #print("unloading")
+
+    #get the thread to end
     with thread_lock:
         disconnect = True
     
+    #wait till the thread has closed
     while thread_running:
     	time.sleep(0.0001)
-
-    #print("unloaded")
 
 # called when user updatas settings
 def script_update(settings):
@@ -294,7 +294,7 @@ def script_update(settings):
     global port
     global password
     global autoconnect
-    #global props
+    global thread_running
 
     source_1_name = obs.obs_data_get_string(settings, "source 1")
     source_2_name = obs.obs_data_get_string(settings, "source 2")
@@ -305,7 +305,18 @@ def script_update(settings):
     host = obs.obs_data_get_string(settings, "host")
     port = obs.obs_data_get_int(settings, "port")
     password = obs.obs_data_get_string(settings, "password")
-    autoconnect = obs.obs_data_get_bool(settings, "autoconnect")
+    
+    tmpAutoconnect = obs.obs_data_get_bool(settings, "autoconnect")
+    if not autoconnect and tmpAutoconnect:
+        autoconnect = tmpAutoconnect
+        if not thread_running:
+            t = threading.Thread(target=connect)
+            t.daemon = True
+            t.start()
+            q.put(0)
+            thread_running = True
+    else:
+        autoconnect = tmpAutoconnect
 
 def script_defaults(settings):
     obs.obs_data_set_default_double(settings, "transition_time", 0.5)
