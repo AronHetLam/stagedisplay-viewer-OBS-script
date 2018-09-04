@@ -4,7 +4,7 @@ This script for OBS studio makes you able to get slide text from Propresenter di
 Only testet on Windows 10 with ProPresenter 6. 
 
 Installation:
-1. Make sure you have python 64-bit installed as OBS by default uses 64-bit version, and that you have linked to the Python directory within OBS. (OBS documentation states that only Python 3.6 is supported on Windows - On Mac Python 3 and above should work for this script)
+1. Make sure you have python 3.6.6 64-bit installed as OBS by default uses 64-bit version, and that you have linked to the Python directory within OBS. (OBS documentation states that only Python 3.6 is supported on Windows)
 2. Within Propresenter, Enable Stagedisplay App.
 Choose "Preferences" under the "ProPresenter 6" tab, and go to the "Network" tab within Preferences. Tick off "Enable Network" and "Enable Stage Display App". Select a password and a port number, and remember those for later.
 3. Add one or two text sources (GDI+) to a scene in OBS, which the script can use to display the slide text from ProPresenter. If you use two sources the script is able to make a fading animation between changing slides - in this case, make sure the layout and tranformation of both sources are the same for best looking results.
