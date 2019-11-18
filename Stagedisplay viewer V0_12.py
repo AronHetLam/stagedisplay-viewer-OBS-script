@@ -115,7 +115,10 @@ def recv_and_process_data(): #run only in thread t
                         displayLayouts = root 
                 elif root.tag == 'StageDisplayData':
                     for slide in root.findall('**[@identifier="CurrentSlide"]'):
-                        tmp_slideText = slide.text.strip()
+                        if slide.text != None:
+                            tmp_slideText = slide.text.strip()
+                        else:
+                            tmp_slideText = ""
                         if tmp_slideText != slideText:
                             with thread_lock:
                                 last_slideText = slideText
