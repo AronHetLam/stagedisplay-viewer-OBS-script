@@ -1,4 +1,5 @@
 import obspython as obs
+import re
 import threading
 from queue import Queue
 import socket
@@ -72,7 +73,7 @@ def connect(): #run only in thread t
             s.sendall(loginString.encode() + b'\r' + b'\n')
 
             data = s.recv(4096).decode("utf-8")
-            print("Initial response from server: " + data)
+            print("Initial response from server: " + data.strip())
             if SUCCESSFUL_LOGIN_WINDOWS in data or SUCCESSFUL_LOGIN in data:
                 print("Connected")
                 with thread_lock:
@@ -104,36 +105,60 @@ def recv_and_process_data(): #run only in thread t
     global displayLayouts
     global source_1_name
     global source_2_name
+    global pullParser
+    global rootElement
     
     try:
         data = s.recv(4096).decode("utf-8")
-        for line in data.split('<?xml version="1.0"?>'):
-            if len(line) > 0:
-                root = ET.fromstring(line)
-
-                if root.tag == 'DisplayLayouts':
-                    with thread_lock:
-                        displayLayouts = root 
-                elif root.tag == 'StageDisplayData':
-                    for slide in root.findall('**[@identifier="CurrentSlide"]'):
-                        if slide.text != None:
-                            tmp_slideText = slide.text.strip()
-                        else:
-                            tmp_slideText = ""
-
-                        if tmp_slideText != slideText:
-                            with thread_lock:
-                                last_slideText = slideText
-                                slideText = tmp_slideText
-                                set_sources()
-                            
-    except Exception as E:
+    except Exception as e:
+        data = ""
         if connected:
-            print("Disconnected because of error while recieving and reading data from server: " + str(E))
+            print("Disconnected because of error while recieving data from server: " + str(e))
             with thread_lock:
                 connected = False
         else:
             print("Connection was shut down")
+
+    first = False
+    for line in data.splitlines(True):
+        if pullParser == None:
+            pullParser = ET.XMLPullParser(["start", "end"])
+            first = True
+
+        try:
+            pullParser.feed(line)
+            for event, element in pullParser.read_events():
+                if first and event == "start":
+                    rootElement = element
+                    first = False
+
+                if rootElement == element and event == "end":
+                    process_xml_data(element)
+                    pullParser = None
+
+        except ET.ParseError as e:
+            print("Error parsing XML data: " + str(e))
+
+def process_xml_data(root):
+    global slideText
+    global last_slideText
+
+    if root.tag == 'DisplayLayouts':
+        with thread_lock:
+            displayLayouts = root 
+    elif root.tag == 'StageDisplayData':
+        for slide in root.findall('**[@identifier="CurrentSlide"]'):
+            if slide.text != None:
+                tmp_slideText = slide.text.strip()
+            else:
+                tmp_slideText = ""
+
+            if tmp_slideText != slideText:
+                with thread_lock:
+                    last_slideText = slideText
+                    slideText = tmp_slideText
+                    set_sources()
+    
 
 def set_sources(): #run only at loading and in thread t
     global update_time
@@ -228,7 +253,7 @@ def transition():
             
 # defines script description
 def script_description():
-   return '''Connects to Propresenter stage display server, and sets a text source as the current slides text. Make sure to set the right host IP, port and password as in Propresenter.
+   return '''Connects to Propresenter stage display server, and sets a text source as the current slides text. Make sure to set the right host IP, port and password, in order to connect to Propresenter (Propresnter does't use encryprion at all, so don't use a sensitive password here).
 
 Choose two individual text sources to get a fading transition.
 
@@ -266,16 +291,19 @@ def script_properties():
 
 # called at startup
 def script_load(settings):
-    global connected
     global autoconnect
     global thread_running
     global slideText
     global last_slideText
+    global pullParser
+    global rootElement
     
     #Make the text sources show nothing at startup
     slideText       = ""
     last_slideText  = ""
     set_sources()
+    pullParser = None
+    rootElement = None
 
     if autoconnect:
         t = threading.Thread(target=connect)
@@ -285,7 +313,6 @@ def script_load(settings):
         thread_running = True
 
     obs.timer_add(transition, 25)
-    handler = obs.obs_get_signal_handler()
     
 # called when unloaded
 def script_unload():
@@ -302,7 +329,6 @@ def script_unload():
     	time.sleep(0.0001)
 
     obs.timer_remove(transition)
-    handler = obs.obs_get_signal_handler()
 
 # called when user updatas settings
 def script_update(settings):
