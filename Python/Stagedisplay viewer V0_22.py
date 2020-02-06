@@ -98,13 +98,15 @@ def connect(): #run only in thread t
     with thread_lock:
         thread_running = False
 
+def reset_pullParser():
+    global pullParser
+    global first
+    pullParser = None
+    pullParser = ET.XMLPullParser(["start", "end"])
+    first = True
+
 def recv_and_process_data(): #run only in thread t
     global connected
-    global slideText
-    global last_slideText
-    global displayLayouts
-    global source_1_name
-    global source_2_name
     global pullParser
     global rootElement
     
@@ -119,25 +121,33 @@ def recv_and_process_data(): #run only in thread t
         else:
             print("Connection was shut down")
 
-    first = False
+
     for line in data.splitlines(True):
-        if pullParser == None:
-            pullParser = ET.XMLPullParser(["start", "end"])
-            first = True
-
         try:
-            pullParser.feed(line)
-            for event, element in pullParser.read_events():
-                if first and event == "start":
-                    rootElement = element
-                    first = False
-
-                if rootElement == element and event == "end":
-                    process_xml_data(element)
-                    pullParser = None
+            parse_and_process(line)
 
         except ET.ParseError as e:
-            print("Error parsing XML data: " + str(e))
+            reset_pullParser()
+            try:
+                parse_and_process(line)
+            except ET.ParseError as e2:
+                print("Error parsing XML data: " + str(e2))
+                reset_pullParser()
+
+def parse_and_process(line):
+    global first
+    global pullParser
+    global rootElement
+    
+    pullParser.feed(line)
+    for event, element in pullParser.read_events():
+        if first and event == "start":
+            rootElement = element
+            first = False
+
+        if rootElement == element and event == "end":
+            process_xml_data(element)
+            reset_pullParser()
 
 def process_xml_data(root):
     global slideText
@@ -158,7 +168,6 @@ def process_xml_data(root):
                     last_slideText = slideText
                     slideText = tmp_slideText
                     set_sources()
-    
 
 def set_sources(): #run only at loading and in thread t
     global update_time
@@ -295,14 +304,13 @@ def script_load(settings):
     global thread_running
     global slideText
     global last_slideText
-    global pullParser
     global rootElement
     
     #Make the text sources show nothing at startup
     slideText       = ""
     last_slideText  = ""
     set_sources()
-    pullParser = None
+    reset_pullParser()
     rootElement = None
 
     if autoconnect:
