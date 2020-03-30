@@ -36,6 +36,7 @@ transition_time = 0.5
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 q = Queue()
 thread_lock = threading.Lock()
+blankDataCounter = 0
 
 def connect_button_clicked(props, p):
     global connected
@@ -67,13 +68,15 @@ def connect(): #run only in thread t
         tries += 1
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print("Connecting...")
             s.connect((host, port))
+            s.settimeout(2)
             loginString = "<StageDisplayLogin>" + password + "</StageDisplayLogin>"
-            print("Sending login") # + loginString)
+            #print("Sending login") # + loginString)
             s.sendall(loginString.encode() + b'\r' + b'\n')
 
             data = s.recv(4096).decode("utf-8")
-            print("Initial response from server: " + data.strip())
+            #print("Initial response from server: " + data.strip())
             if SUCCESSFUL_LOGIN_WINDOWS in data or SUCCESSFUL_LOGIN in data:
                 print("Connected")
                 with thread_lock:
@@ -87,8 +90,8 @@ def connect(): #run only in thread t
             else:
                 print("Login to server failed: Unknown response - Make sure you're connecting to Propresenter StageDisplay server")
 
-        except Exception as E:
-            print("Couldn't connect to server: " + str(E))
+        except Exception as e:
+            print("Couldn't connect to server: " + str(e))
             s.close()
             time.sleep(1)
         
@@ -109,18 +112,33 @@ def recv_and_process_data(): #run only in thread t
     global connected
     global pullParser
     global rootElement
-    
+    global s
+    global blankDataCounter
+
     try:
         data = s.recv(4096).decode("utf-8")
+        if(data.strip() == ""):
+            blankDataCounter += 1
+            if (blankDataCounter > 100 ): #If stage display app is diabled in propresenter while connected, it spams balnk lines rapidly.
+                print("Resetting connectin because of blank data - this can happen if stage display app was disabled in Pro Presenter settings while connected")
+                blankDataCounter = 0
+                with thread_lock:
+                    connected = False
+        else: 
+            blankDataCounter = 0
     except Exception as e:
         data = ""
         if connected:
-            print("Disconnected because of error while recieving data from server: " + str(e))
-            with thread_lock:
-                connected = False
+            if(isinstance(e, socket.timeout)):
+                print("Disconnect because of timeout")
+                with thread_lock:
+                    connected = False
+            else:
+                print("Disconnected because of error while recieving data from server: " + str(e))
+                with thread_lock:
+                    connected = False
         else:
             print("Connection was shut down")
-
 
     for line in data.splitlines(True):
         try:
@@ -216,7 +234,7 @@ def set_sources(): #run only at loading and in thread t
     obs.obs_source_release(source2)
     obs.obs_source_release(filter1)
     obs.obs_source_release(filter2)
-    
+
 def transition():
     global update_time
     global source_1_name
@@ -259,7 +277,7 @@ def transition():
 
             obs.obs_source_release(source1)
             obs.obs_source_release(source2)
-            
+
 # defines script description
 def script_description():
    return '''Connects to Propresenter stage display server, and sets a text source as the current slides text. Make sure to set the right host IP, port and password, in order to connect to Propresenter (Propresnter does't use encryprion at all, so don't use a sensitive password here).
@@ -306,14 +324,11 @@ def script_load(settings):
     global last_slideText
     global rootElement
     
-    #Make the text sources show nothing at startup
-    slideText       = ""
-    last_slideText  = ""
-    set_sources()
     reset_pullParser()
     rootElement = None
 
     if autoconnect:
+        global t 
         t = threading.Thread(target=connect)
         t.daemon = True
         t.start()
@@ -321,20 +336,32 @@ def script_load(settings):
         thread_running = True
 
     obs.timer_add(transition, 25)
-    
+
+    # clear slides after text sources have been initialized, 
+    # as scripts seem to be loaded before that. 
+    obs.timer_add(clearTextSourcesOnLoad, 1000);
+
+def clearTextSourcesOnLoad():
+    slideText       = ""
+    last_slideText  = ""
+    set_sources()
+    obs.remove_current_callback()
+
 # called when unloaded
 def script_unload():
     global connected
     global thread_running
     global disconnect
+    global s
 
     #get the thread to end
     with thread_lock:
+        s.close()
         disconnect = True
-    
+
     #wait till the thread has closed
     while thread_running:
-    	time.sleep(0.0001)
+    	time.sleep(0.000001)
 
     obs.timer_remove(transition)
 
