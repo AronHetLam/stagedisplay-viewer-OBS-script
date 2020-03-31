@@ -81,6 +81,7 @@ def connect(): #run only in thread t
                 while connected and not disconnect:
                     recv_and_process_data()
                 s.close()
+                tries = 0 #try once if connection is lost after a succesfull connection.
                 print("Disconnected")
             elif INVALID_PASSWORD in data:
                 print("Login to server failed: Invalid password - Make sure the password matches the one set in Propresenter")
