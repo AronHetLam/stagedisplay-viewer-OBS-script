@@ -18,7 +18,7 @@ connected       = False
 autoconnect     = True
 thread_running  = False #if a thread for recieving data is running
 disconnect      = False #If the thread should disconnect
-disconnected    = False 
+disconnected    = False
 
 displayLayouts      = ET
 StageDisplayData    = ET
@@ -29,6 +29,7 @@ last_slideText = ""
 
 source_1_name = ""
 source_2_name = ""
+background_name = ""
 transparency1 = 100
 transparency2 = 0
 transition_time = 0.5
@@ -92,10 +93,10 @@ def connect(): #run only in thread t
             print("Couldn't connect to server: " + str(E))
             s.close()
             time.sleep(1)
-        
+
         with thread_lock:
             connected = False
-        
+
     with thread_lock:
         thread_running = False
 
@@ -110,7 +111,7 @@ def recv_and_process_data(): #run only in thread t
     global connected
     global pullParser
     global rootElement
-    
+
     try:
         data = s.recv(4096).decode("utf-8")
     except Exception as e:
@@ -139,7 +140,7 @@ def parse_and_process(line):
     global first
     global pullParser
     global rootElement
-    
+
     pullParser.feed(line)
     for event, element in pullParser.read_events():
         if first and event == "start":
@@ -156,7 +157,7 @@ def process_xml_data(root):
 
     if root.tag == 'DisplayLayouts':
         with thread_lock:
-            displayLayouts = root 
+            displayLayouts = root
     elif root.tag == 'StageDisplayData':
         for slide in root.findall('**[@identifier="CurrentSlide"]'):
             if slide.text != None:
@@ -204,7 +205,7 @@ def set_sources(): #run only at loading and in thread t
         obs.obs_data_set_string(source2Settings, "text", last_slideText)
         obs.obs_data_set_int(filter1Settings, "opacity", 0)
         obs.obs_data_set_int(filter2Settings, "opacity", 100)
-    
+
     obs.obs_source_update(source1, source1Settings)
     obs.obs_source_update(source2, source2Settings)
     obs.obs_source_update(filter1, filter1Settings)
@@ -217,11 +218,14 @@ def set_sources(): #run only at loading and in thread t
     obs.obs_source_release(source2)
     obs.obs_source_release(filter1)
     obs.obs_source_release(filter2)
-    
+
 def transition():
     global update_time
     global source_1_name
     global source_2_name
+    global slideText
+    global last_slideText
+    global background_name
     global transparency1
     global transparency2
     global transition_time
@@ -229,17 +233,21 @@ def transition():
     with thread_lock:
         if transparency1 < 100:
             time_since_last_update = time.time() - update_time
+            if time_since_last_update > update_time: # prevent overflow
+                time_since_last_update == update_time
+
             lerp = int(time_since_last_update * 100 / transition_time)
 
             transparency1 = lerp
 
             if transparency1 >= 100:
                 transparency1 = 100
-            
+
             transparency2 = 100 - lerp
             if transparency2 <= 0:
                 transparency2 = 0
 
+            # Update sources
             source1 = obs.obs_get_source_by_name(source_1_name)
             source2 = obs.obs_get_source_by_name(source_2_name)
             if source1 is not None and source2 is not None:
@@ -250,9 +258,10 @@ def transition():
 
                 obs.obs_data_set_int(settings1, "opacity", transparency1)
                 obs.obs_data_set_int(settings2, "opacity", transparency2)
+
                 obs.obs_source_update(filter1, settings1)
                 obs.obs_source_update(filter2, settings2)
-                
+
                 obs.obs_data_release(settings1)
                 obs.obs_data_release(settings2)
                 obs.obs_source_release(filter1)
@@ -260,7 +269,33 @@ def transition():
 
             obs.obs_source_release(source1)
             obs.obs_source_release(source2)
-            
+
+            # Update background
+            background = obs.obs_get_source_by_name(background_name)
+            if background is not None:
+                filterb = obs.obs_source_get_filter_by_name(background, COLOR_FILTER_NAME)
+                settingsb = obs.obs_data_create()
+
+                if source1 is not None and source2 is not None:
+                    if last_slideText == "" and slideText != "":
+                        obs.obs_data_set_int(settingsb, "opacity", transparency1)
+                        obs.obs_source_update(filterb, settingsb)
+                    elif last_slideText != "" and slideText == "":
+                        obs.obs_data_set_int(settingsb, "opacity", transparency2)
+                        obs.obs_source_update(filterb, settingsb)
+                else:
+                    if last_slideText == "" and slideText != "":
+                        obs.obs_data_set_int(settingsb, "opacity", 100)
+                        obs.obs_source_update(filterb, settingsb)
+                    elif last_slideText != "" and slideText == "":
+                        obs.obs_data_set_int(settingsb, "opacity", 0)
+                        obs.obs_source_update(filterb, settingsb)
+
+                obs.obs_data_release(settingsb)
+                obs.obs_source_release(filterb)
+
+            obs.obs_source_release(background)
+
 # defines script description
 def script_description():
    return '''Connects to Propresenter stage display server, and sets a text source as the current slides text. Make sure to set the right host IP, port and password, in order to connect to Propresenter (Propresnter does't use encryprion at all, so don't use a sensitive password here).
@@ -271,13 +306,17 @@ If you don't see your text sources in the lists, try to reload the script.'''
 
 # defines user properties
 def script_properties():
-    #global props 
+    #global props
     props = obs.obs_properties_create()
 
-    p1 = obs.obs_properties_add_list(props, "source 1", "Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    p2 = obs.obs_properties_add_list(props, "source 2", "Text Source", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    obs.obs_property_list_add_string(p1, "None", "")
-    obs.obs_property_list_add_string(p2, "None", "")
+    text1 = obs.obs_properties_add_list(props, "source 1", "Text Source 1", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    text2 = obs.obs_properties_add_list(props, "source 2", "Text Source 2", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+
+    background = obs.obs_properties_add_list(props, "background", "Background for Transition", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+
+    obs.obs_property_list_add_string(text1, "None", "")
+    obs.obs_property_list_add_string(text2, "None", "")
+    obs.obs_property_list_add_string(background, "None", "")
 
     sources = obs.obs_enum_sources()
     if sources is not None:
@@ -285,8 +324,11 @@ def script_properties():
             source_id = obs.obs_source_get_id(source)
             if source_id == "text_gdiplus" or source_id == "text_ft2_source" or source_id == "text_gdiplus_v2":
                 name = obs.obs_source_get_name(source)
-                obs.obs_property_list_add_string(p1, name, name)
-                obs.obs_property_list_add_string(p2, name, name)
+                obs.obs_property_list_add_string(text1, name, name)
+                obs.obs_property_list_add_string(text2, name, name)
+            if source_id == "color_source":
+                name = obs.obs_source_get_name(source)
+                obs.obs_property_list_add_string(background, name, name)
     obs.source_list_release(sources)
 
     obs.obs_properties_add_float_slider(props, "transition_time", "Transition time (S)", 0.1, 5.0, 0.1)
@@ -306,7 +348,7 @@ def script_load(settings):
     global slideText
     global last_slideText
     global rootElement
-    
+
     #Make the text sources show nothing at startup
     slideText       = ""
     last_slideText  = ""
@@ -322,7 +364,7 @@ def script_load(settings):
         thread_running = True
 
     obs.timer_add(transition, 25)
-    
+
 # called when unloaded
 def script_unload():
     global connected
@@ -332,7 +374,7 @@ def script_unload():
     #get the thread to end
     with thread_lock:
         disconnect = True
-    
+
     #wait till the thread has closed
     while thread_running:
     	time.sleep(0.0001)
@@ -343,6 +385,7 @@ def script_unload():
 def script_update(settings):
     global source_1_name
     global source_2_name
+    global background_name
     global transition_time
     global host
     global port
@@ -354,13 +397,15 @@ def script_update(settings):
     create_colorcorrection_filter(source_1_name, COLOR_FILTER_NAME)
     source_2_name = obs.obs_data_get_string(settings, "source 2")
     create_colorcorrection_filter(source_2_name, COLOR_FILTER_NAME)
+    background_name = obs.obs_data_get_string(settings, "background")
+    create_colorcorrection_filter(background_name, COLOR_FILTER_NAME)
 
     transition_time = obs.obs_data_get_double(settings, "transition_time")
 
     host = obs.obs_data_get_string(settings, "host")
     port = obs.obs_data_get_int(settings, "port")
     password = obs.obs_data_get_string(settings, "password")
-    
+
     tmpAutoconnect = obs.obs_data_get_bool(settings, "autoconnect")
     if not autoconnect and tmpAutoconnect:
         autoconnect = tmpAutoconnect
