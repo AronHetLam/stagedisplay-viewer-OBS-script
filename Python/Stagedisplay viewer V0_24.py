@@ -326,7 +326,7 @@ def script_properties():
                 name = obs.obs_source_get_name(source)
                 obs.obs_property_list_add_string(text1, name, name)
                 obs.obs_property_list_add_string(text2, name, name)
-            if source_id == "color_source":
+            if source_id == "color_source" or source_id == "color_source_v2":
                 name = obs.obs_source_get_name(source)
                 obs.obs_property_list_add_string(background, name, name)
     obs.source_list_release(sources)
