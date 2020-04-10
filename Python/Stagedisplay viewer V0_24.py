@@ -9,7 +9,7 @@ import time
 SUCCESSFUL_LOGIN            = "<StageDisplayLoginSuccess />"
 SUCCESSFUL_LOGIN_WINDOWS    = "<StageDisplayLoginSuccess>"
 INVALID_PASSWORD            = "<Error>Invalid Password</Error>"
-COLOR_FILTER_NAME           = "Color filter"
+COLOR_FILTER_NAME           = "Color filter (used by stagedisplay script)"
 
 host            = "localhost"
 port            = 50002
@@ -300,9 +300,9 @@ def transition():
 def script_description():
    return '''Connects to Propresenter stage display server, and sets a text source as the current slides text. Make sure to set the right host IP, port and password, in order to connect to Propresenter (Propresnter does't use encryprion at all, so don't use a sensitive password here).
 
-Choose two individual text sources to get a fading transition.
+Choose two individual text sources to get a fading transition. Choose a color cource for background to make it fade away with blank slides. Add an additional color filter to your color source to make your background transparent.
 
-If you don't see your text sources in the lists, try to reload the script.'''
+If you don't see your sources in the lists, try to reload the script.'''
 
 # defines user properties
 def script_properties():
@@ -312,7 +312,7 @@ def script_properties():
     text1 = obs.obs_properties_add_list(props, "source 1", "Text Source 1", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
     text2 = obs.obs_properties_add_list(props, "source 2", "Text Source 2", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
 
-    background = obs.obs_properties_add_list(props, "background", "Background for Transition", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    background = obs.obs_properties_add_list(props, "background", "Background", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
 
     obs.obs_property_list_add_string(text1, "None", "")
     obs.obs_property_list_add_string(text2, "None", "")
