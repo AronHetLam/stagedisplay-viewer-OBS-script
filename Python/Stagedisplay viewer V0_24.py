@@ -285,9 +285,6 @@ def transition():
                 obs.obs_source_release(filter1)
                 obs.obs_source_release(filter2)
 
-            obs.obs_source_release(source1)
-            obs.obs_source_release(source2)
-
             # Update background
             background = obs.obs_get_source_by_name(background_name)
             if background is not None:
@@ -312,6 +309,8 @@ def transition():
                 obs.obs_data_release(settingsb)
                 obs.obs_source_release(filterb)
 
+            obs.obs_source_release(source1)
+            obs.obs_source_release(source2)
             obs.obs_source_release(background)
 
 # defines script description
@@ -344,7 +343,7 @@ def script_properties():
                 name = obs.obs_source_get_name(source)
                 obs.obs_property_list_add_string(text1, name, name)
                 obs.obs_property_list_add_string(text2, name, name)
-            if source_id == "color_source" or source_id == "color_source_v2":
+            elif source_id == "color_source" or source_id == "color_source_v2":
                 name = obs.obs_source_get_name(source)
                 obs.obs_property_list_add_string(background, name, name)
     obs.source_list_release(sources)
